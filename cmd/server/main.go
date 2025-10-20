@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -13,9 +14,25 @@ import (
 	"github.com/acai-travel/tech-challenge/internal/pb"
 	"github.com/gorilla/mux"
 	"github.com/twitchtv/twirp"
+
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gorilla/mux/otelmux"
 )
 
 func main() {
+	meterProvider, traceProvider, reqCount, reqDuration, err := initProvider()
+	if err != nil {
+		slog.Error("failed to initialize OpenTelemetry provider", "error", err)
+		return
+	}
+
+	defer func() {
+		if err := meterProvider.Shutdown(context.Background()); err != nil {
+			slog.Error("Error shutting down meter provider", "error", err)
+		}
+		if err := traceProvider.Shutdown(context.Background()); err != nil {
+			slog.Error("Error shutting down trace provider", "error", err)
+		}
+	}()
 	mongo := mongox.MustConnect()
 
 	repo := model.New(mongo)
@@ -26,8 +43,10 @@ func main() {
 	// Configure handler
 	handler := mux.NewRouter()
 	handler.Use(
+		otelmux.Middleware("Clippy-chat"),
 		httpx.Logger(),
 		httpx.Recovery(),
+		MetricsMiddleware(reqCount, reqDuration),
 	)
 
 	handler.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
