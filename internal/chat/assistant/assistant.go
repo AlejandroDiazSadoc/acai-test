@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"strings"
@@ -29,11 +30,15 @@ func (a *Assistant) Title(ctx context.Context, conv *model.Conversation) (string
 
 	slog.InfoContext(ctx, "Generating title for conversation", "conversation_id", conv.ID)
 
-	msgs := make([]openai.ChatCompletionMessageParamUnion, len(conv.Messages))
+	msgs := make([]openai.ChatCompletionMessageParamUnion, len(conv.Messages)+1)
 
-	msgs[0] = openai.AssistantMessage("Generate a concise, descriptive title for the conversation based on the user message. The title should be a single line, no more than 80 characters, and should not include any special characters or emojis.")
+	msgs[0] = openai.SystemMessage("Generate a concise, descriptive title for the conversation based on the user message. The title should be a single line, no more than 80 characters, and should not include any special characters or emojis.")
 	for i, m := range conv.Messages {
-		msgs[i] = openai.UserMessage(m.Content)
+		if m.Role == model.RoleAssistant {
+			msgs[i+1] = openai.AssistantMessage(m.Content)
+		} else {
+			msgs[i+1] = openai.UserMessage(m.Content)
+		}
 	}
 
 	resp, err := a.cli.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
@@ -47,6 +52,10 @@ func (a *Assistant) Title(ctx context.Context, conv *model.Conversation) (string
 
 	if len(resp.Choices) == 0 || strings.TrimSpace(resp.Choices[0].Message.Content) == "" {
 		return "", errors.New("empty response from OpenAI for title generation")
+	}
+
+	for i := 0; i < len(resp.Choices); i++ {
+		fmt.Printf("Choice content %s\n", resp.Choices[i].Message.Content)
 	}
 
 	title := resp.Choices[0].Message.Content
@@ -142,7 +151,25 @@ func (a *Assistant) Reply(ctx context.Context, conv *model.Conversation) (string
 
 				switch call.Function.Name {
 				case "get_weather":
-					msgs = append(msgs, openai.ToolMessage("weather is fine", call.ID))
+					var payload struct {
+						Location string `json:"location,omitempty"`
+					}
+					if err := json.Unmarshal([]byte(call.Function.Arguments), &payload); err != nil {
+						msgs = append(msgs, openai.ToolMessage("failed to parse tool call arguments: "+err.Error(), call.ID))
+						break
+					}
+					weather, err := getWeatherAndForecast(ctx, os.Getenv("WEATHER_API"), payload.Location)
+					if err != nil {
+						msgs = append(msgs, openai.ToolMessage("failed to get the weather info: "+err.Error(), call.ID))
+						break
+					}
+					weatherBytes, err := json.Marshal(weather)
+					if err != nil {
+						msgs = append(msgs, openai.ToolMessage("error converting response: "+err.Error(), call.ID))
+						break
+					}
+					weatherResultString := string(weatherBytes)
+					msgs = append(msgs, openai.ToolMessage(weatherResultString, call.ID))
 				case "get_today_date":
 					msgs = append(msgs, openai.ToolMessage(time.Now().Format(time.RFC3339), call.ID))
 				case "get_holidays":

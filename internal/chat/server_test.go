@@ -2,8 +2,10 @@ package chat
 
 import (
 	"context"
+	"strings"
 	"testing"
 
+	"github.com/acai-travel/tech-challenge/internal/chat/assistant"
 	"github.com/acai-travel/tech-challenge/internal/chat/model"
 	. "github.com/acai-travel/tech-challenge/internal/chat/testing"
 	"github.com/acai-travel/tech-challenge/internal/pb"
@@ -40,4 +42,71 @@ func TestServer_DescribeConversation(t *testing.T) {
 			t.Fatalf("expected twirp.NotFound error, got %v", err)
 		}
 	}))
+}
+
+func TestServer_StartConversation(t *testing.T) {
+	ctx := context.Background()
+	srv := NewServer(model.New(ConnectMongo()), assistant.New())
+
+	t.Run("Test Start Conversation", WithFixture(func(t *testing.T, f *Fixture) {
+		out, err := srv.StartConversation(ctx, &pb.StartConversationRequest{Message: "Hello, I am testing the Start Conversation API call"})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if strings.TrimSpace(out.GetConversationId()) == "" {
+			t.Fatalf("Conversation does not have conversation ID")
+		}
+		if strings.TrimSpace(out.GetTitle()) == "" {
+			t.Fatalf("Didn't populate title")
+		}
+		if strings.TrimSpace(out.GetReply()) == "" {
+			t.Fatalf("Didn't provide assistant answer")
+		}
+
+		t.Logf("ID: %s", out.GetConversationId())
+		t.Logf("Title: %s", out.GetTitle())
+		t.Logf("Assistant: %s", out.GetReply())
+	}))
+}
+
+func BenchmarkStartConversationLegacy(b *testing.B) {
+	ctx := context.Background()
+	srv := NewServer(model.New(ConnectMongo()), assistant.New())
+
+	for i := 0; i < b.N; i++ {
+		out, err := srv.StartConversationLegacy(ctx, &pb.StartConversationRequest{Message: "Hello, I am testing the Start Conversation API call"})
+		if err != nil {
+			b.Fatalf("unexpected error: %v", err)
+		}
+		if strings.TrimSpace(out.GetConversationId()) == "" {
+			b.Fatalf("Conversation does not have conversation ID")
+		}
+		if strings.TrimSpace(out.GetTitle()) == "" {
+			b.Fatalf("Didn't populate title")
+		}
+		if strings.TrimSpace(out.GetReply()) == "" {
+			b.Fatalf("Didn't provide assistant answer")
+		}
+	}
+}
+
+func BenchmarkStartConversation(b *testing.B) {
+	ctx := context.Background()
+	srv := NewServer(model.New(ConnectMongo()), assistant.New())
+
+	for i := 0; i < b.N; i++ {
+		out, err := srv.StartConversation(ctx, &pb.StartConversationRequest{Message: "Hello, I am testing the Start Conversation API call"})
+		if err != nil {
+			b.Fatalf("unexpected error: %v", err)
+		}
+		if strings.TrimSpace(out.GetConversationId()) == "" {
+			b.Fatalf("Conversation does not have conversation ID")
+		}
+		if strings.TrimSpace(out.GetTitle()) == "" {
+			b.Fatalf("Didn't populate title")
+		}
+		if strings.TrimSpace(out.GetReply()) == "" {
+			b.Fatalf("Didn't provide assistant answer")
+		}
+	}
 }
