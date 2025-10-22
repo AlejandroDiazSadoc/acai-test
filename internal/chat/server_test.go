@@ -2,8 +2,10 @@ package chat
 
 import (
 	"context"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/acai-travel/tech-challenge/internal/chat/assistant"
 	"github.com/acai-travel/tech-challenge/internal/chat/model"
@@ -78,6 +80,8 @@ func BenchmarkStartConversationLegacy(b *testing.B) {
 	srv := NewServer(model.New(ConnectMongo()), assistant.New(tool.SetupTools()))
 
 	for i := 0; i < b.N; i++ {
+		runtime.GC()
+		startTime := time.Now()
 		out, err := srv.StartConversationLegacy(ctx, &pb.StartConversationRequest{Message: "Hello, I am testing the Start Conversation API call"})
 		if err != nil {
 			b.Fatalf("unexpected error: %v", err)
@@ -91,6 +95,7 @@ func BenchmarkStartConversationLegacy(b *testing.B) {
 		if strings.TrimSpace(out.GetReply()) == "" {
 			b.Fatalf("Didn't provide assistant answer")
 		}
+		b.ReportMetric(time.Since(startTime).Seconds(), "seconds") // Report time taken for each iteration
 	}
 }
 
@@ -99,6 +104,8 @@ func BenchmarkStartConversation(b *testing.B) {
 	srv := NewServer(model.New(ConnectMongo()), assistant.New(tool.SetupTools()))
 
 	for i := 0; i < b.N; i++ {
+		runtime.GC()
+		startTime := time.Now()
 		out, err := srv.StartConversation(ctx, &pb.StartConversationRequest{Message: "Hello, I am testing the Start Conversation API call"})
 		if err != nil {
 			b.Fatalf("unexpected error: %v", err)
@@ -112,5 +119,6 @@ func BenchmarkStartConversation(b *testing.B) {
 		if strings.TrimSpace(out.GetReply()) == "" {
 			b.Fatalf("Didn't provide assistant answer")
 		}
+		b.ReportMetric(time.Since(startTime).Seconds(), "seconds") // Report time taken for each iteration
 	}
 }

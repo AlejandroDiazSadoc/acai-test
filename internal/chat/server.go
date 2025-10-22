@@ -10,6 +10,7 @@ import (
 	"github.com/acai-travel/tech-challenge/internal/pb"
 	"github.com/twitchtv/twirp"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"golang.org/x/sync/errgroup"
 )
 
 var _ pb.ChatService = (*Server)(nil)
@@ -100,51 +101,42 @@ func (s *Server) StartConversation(ctx context.Context, req *pb.StartConversatio
 		return nil, twirp.RequiredArgumentError("message")
 	}
 
-	// choose a title
-	titleDone := make(chan struct{})
-	titleChan := make(chan string, 1)
-	titleErrChan := make(chan error, 1)
-	go func() {
-		defer close(titleDone)
+	// group error handling of async wait
+	group, groupCtx := errgroup.WithContext(ctx)
 
-		title, err := s.assist.Title(ctx, conversation)
-		select {
-		case <-titleDone: // Check if the main thread already finished/timed out
-			return
-		default:
-			// Proceed with sending the result
-			if err != nil {
-				titleErrChan <- err
-			} else {
-				titleChan <- title
-			}
-		}
-	}()
+	// just to make sure about data races
+	titleConversation := *conversation
 
-	// generate a reply
-	reply, err := s.assist.Reply(ctx, conversation)
-	if err != nil {
+	var title string
+	var titleErr error
+	var reply string
+
+	// asyng generates title
+	group.Go(func() error {
+		title, titleErr = s.assist.Title(groupCtx, &titleConversation)
+
+		return nil
+	})
+	// asyng generates reply
+	group.Go(func() error {
+		var err error
+		reply, err = s.assist.Reply(groupCtx, conversation)
+		return err
+	})
+
+	// waits for the slowest one or for reply to fail
+	if err := group.Wait(); err != nil {
+		slog.ErrorContext(ctx, "Failed to generate assistant reply", "error", err)
 		return nil, err
 	}
 
-	defer func() {
-		select {
-		case <-titleDone: // Already finished
-		default:
-			close(titleDone)
-		}
-	}()
-
-	select {
-	case title := <-titleChan:
+	// If the title generation failed, fallback to default title
+	// Shouldn't happen much because we explicitly want to wait for the generation of the title
+	if titleErr != nil {
+		slog.ErrorContext(ctx, "Failed to generate conversation title", "error", titleErr)
+		conversation.Title = "Untitled conversation"
+	} else {
 		conversation.Title = title
-	case err := <-titleErrChan:
-		slog.ErrorContext(ctx, "Failed to generate conversation title (Non-blocking)", "error", err)
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case <-time.After(3 * time.Second):
-		// Timeout to wait, set as 3 after testing that sometimes was not waiting enough
-		slog.WarnContext(ctx, "Title generation took too long, proceeding with default title.")
 	}
 
 	conversation.Messages = append(conversation.Messages, &model.Message{
