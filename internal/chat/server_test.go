@@ -8,6 +8,7 @@ import (
 	"github.com/acai-travel/tech-challenge/internal/chat/assistant"
 	"github.com/acai-travel/tech-challenge/internal/chat/model"
 	. "github.com/acai-travel/tech-challenge/internal/chat/testing"
+	"github.com/acai-travel/tech-challenge/internal/chat/tool"
 	"github.com/acai-travel/tech-challenge/internal/pb"
 	"github.com/google/go-cmp/cmp"
 	"github.com/twitchtv/twirp"
@@ -47,7 +48,7 @@ func TestServer_DescribeConversation(t *testing.T) {
 // Added testing for StartConversation
 func TestServer_StartConversation(t *testing.T) {
 	ctx := context.Background()
-	srv := NewServer(model.New(ConnectMongo()), assistant.New())
+	srv := NewServer(model.New(ConnectMongo()), assistant.New(tool.SetupTools()))
 
 	t.Run("Test Start Conversation", WithFixture(func(t *testing.T, f *Fixture) {
 		out, err := srv.StartConversation(ctx, &pb.StartConversationRequest{Message: "Hello, I am testing the Start Conversation API call"})
@@ -74,7 +75,7 @@ func TestServer_StartConversation(t *testing.T) {
 
 func BenchmarkStartConversationLegacy(b *testing.B) {
 	ctx := context.Background()
-	srv := NewServer(model.New(ConnectMongo()), assistant.New())
+	srv := NewServer(model.New(ConnectMongo()), assistant.New(tool.SetupTools()))
 
 	for i := 0; i < b.N; i++ {
 		out, err := srv.StartConversationLegacy(ctx, &pb.StartConversationRequest{Message: "Hello, I am testing the Start Conversation API call"})
@@ -95,7 +96,7 @@ func BenchmarkStartConversationLegacy(b *testing.B) {
 
 func BenchmarkStartConversation(b *testing.B) {
 	ctx := context.Background()
-	srv := NewServer(model.New(ConnectMongo()), assistant.New())
+	srv := NewServer(model.New(ConnectMongo()), assistant.New(tool.SetupTools()))
 
 	for i := 0; i < b.N; i++ {
 		out, err := srv.StartConversation(ctx, &pb.StartConversationRequest{Message: "Hello, I am testing the Start Conversation API call"})

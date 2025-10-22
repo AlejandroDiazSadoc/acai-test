@@ -4,22 +4,25 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
-	"os"
 	"strings"
-	"time"
 
 	"github.com/acai-travel/tech-challenge/internal/chat/model"
-	ics "github.com/arran4/golang-ical"
+	"github.com/acai-travel/tech-challenge/internal/chat/tool"
 	"github.com/openai/openai-go/v2"
 )
 
 type Assistant struct {
-	cli openai.Client
+	cli     openai.Client
+	tools   tool.Map
+	aiTools []openai.ChatCompletionToolUnionParam
 }
 
-func New() *Assistant {
-	return &Assistant{cli: openai.NewClient()}
+func New(toolsMap tool.Map) *Assistant {
+	return &Assistant{cli: openai.NewClient(),
+		tools:   toolsMap,
+		aiTools: toolsMap.OaiToolDefinitions()}
 }
 
 func (a *Assistant) Title(ctx context.Context, conv *model.Conversation) (string, error) {
@@ -89,46 +92,7 @@ func (a *Assistant) Reply(ctx context.Context, conv *model.Conversation) (string
 		resp, err := a.cli.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
 			Model:    openai.ChatModelGPT4_1,
 			Messages: msgs,
-			Tools: []openai.ChatCompletionToolUnionParam{
-				openai.ChatCompletionFunctionTool(openai.FunctionDefinitionParam{
-					Name:        "get_weather",
-					Description: openai.String("Get weather at the given location"),
-					Parameters: openai.FunctionParameters{
-						"type": "object",
-						"properties": map[string]any{
-							"location": map[string]string{
-								"type": "string",
-							},
-						},
-						"required": []string{"location"},
-					},
-				}),
-				openai.ChatCompletionFunctionTool(openai.FunctionDefinitionParam{
-					Name:        "get_today_date",
-					Description: openai.String("Get today's date and time in RFC3339 format"),
-				}),
-				openai.ChatCompletionFunctionTool(openai.FunctionDefinitionParam{
-					Name:        "get_holidays",
-					Description: openai.String("Gets local bank and public holidays. Each line is a single holiday in the format 'YYYY-MM-DD: Holiday Name'."),
-					Parameters: openai.FunctionParameters{
-						"type": "object",
-						"properties": map[string]any{
-							"before_date": map[string]string{
-								"type":        "string",
-								"description": "Optional date in RFC3339 format to get holidays before this date. If not provided, all holidays will be returned.",
-							},
-							"after_date": map[string]string{
-								"type":        "string",
-								"description": "Optional date in RFC3339 format to get holidays after this date. If not provided, all holidays will be returned.",
-							},
-							"max_count": map[string]string{
-								"type":        "integer",
-								"description": "Optional maximum number of holidays to return. If not provided, all holidays will be returned.",
-							},
-						},
-					},
-				}),
-			},
+			Tools:    a.aiTools,
 		})
 
 		if err != nil {
@@ -145,82 +109,23 @@ func (a *Assistant) Reply(ctx context.Context, conv *model.Conversation) (string
 			for _, call := range message.ToolCalls {
 				slog.InfoContext(ctx, "Tool call received", "name", call.Function.Name, "args", call.Function.Arguments)
 
-				switch call.Function.Name {
-				case "get_weather":
-					var payload struct {
-						Location string `json:"location,omitempty"`
-					}
-					// get param
-					if err := json.Unmarshal([]byte(call.Function.Arguments), &payload); err != nil {
-						msgs = append(msgs, openai.ToolMessage("failed to parse tool call arguments: "+err.Error(), call.ID))
-						break
-					}
-					// get weather
-					weather, err := getWeatherAndForecast(ctx, os.Getenv("WEATHER_API"), payload.Location)
-					if err != nil {
-						msgs = append(msgs, openai.ToolMessage("failed to get the weather info: "+err.Error(), call.ID))
-						break
-					}
-					// convert weather to json
-					weatherBytes, err := json.Marshal(weather)
-					if err != nil {
-						msgs = append(msgs, openai.ToolMessage("error converting response: "+err.Error(), call.ID))
-						break
-					}
-					weatherResultString := string(weatherBytes)
-					// send it to openAI
-					msgs = append(msgs, openai.ToolMessage(weatherResultString, call.ID))
-				case "get_today_date":
-					msgs = append(msgs, openai.ToolMessage(time.Now().Format(time.RFC3339), call.ID))
-				case "get_holidays":
-					link := "https://www.officeholidays.com/ics/spain/catalonia"
-					if v := os.Getenv("HOLIDAY_CALENDAR_LINK"); v != "" {
-						link = v
-					}
+				toolName := call.Function.Name
 
-					events, err := LoadCalendar(ctx, link)
-					if err != nil {
-						msgs = append(msgs, openai.ToolMessage("failed to load holiday events", call.ID))
-						break
-					}
-
-					var payload struct {
-						BeforeDate time.Time `json:"before_date,omitempty"`
-						AfterDate  time.Time `json:"after_date,omitempty"`
-						MaxCount   int       `json:"max_count,omitempty"`
-					}
-
-					if err := json.Unmarshal([]byte(call.Function.Arguments), &payload); err != nil {
-						msgs = append(msgs, openai.ToolMessage("failed to parse tool call arguments: "+err.Error(), call.ID))
-						break
-					}
-
-					var holidays []string
-					for _, event := range events {
-						date, err := event.GetAllDayStartAt()
-						if err != nil {
-							continue
-						}
-
-						if payload.MaxCount > 0 && len(holidays) >= payload.MaxCount {
-							break
-						}
-
-						if !payload.BeforeDate.IsZero() && date.After(payload.BeforeDate) {
-							continue
-						}
-
-						if !payload.AfterDate.IsZero() && date.Before(payload.AfterDate) {
-							continue
-						}
-
-						holidays = append(holidays, date.Format(time.DateOnly)+": "+event.GetProperty(ics.ComponentPropertySummary).Value)
-					}
-
-					msgs = append(msgs, openai.ToolMessage(strings.Join(holidays, "\n"), call.ID))
-				default:
-					return "", errors.New("unknown tool call: " + call.Function.Name)
+				var args map[string]any
+				if err := json.Unmarshal([]byte(call.Function.Arguments), &args); err != nil {
+					msgs = append(msgs, openai.ToolMessage("failed to parse tool call arguments: "+err.Error(), call.ID))
+					break
 				}
+
+				result, err := a.executeTool(ctx, toolName, args)
+
+				if err != nil {
+					slog.ErrorContext(ctx, "Tool execution failed", "tool", toolName, "error", err)
+					msgs = append(msgs, openai.ToolMessage("Tool"+toolName+" failed with error: "+err.Error(), call.ID))
+				} else {
+					msgs = append(msgs, openai.ToolMessage(result, call.ID))
+				}
+
 			}
 
 			continue
@@ -230,4 +135,22 @@ func (a *Assistant) Reply(ctx context.Context, conv *model.Conversation) (string
 	}
 
 	return "", errors.New("too many tool calls, unable to generate reply")
+}
+
+func (a *Assistant) executeTool(ctx context.Context, toolName string, args map[string]any) (string, error) {
+	tool, err := a.tools.GetToolByName(toolName)
+	if err != nil {
+		// Failure to find the tool, either not registered or mismatch
+		// between aiTools and tools map.
+		slog.WarnContext(ctx, "Model requested unknown tool", "tool", toolName)
+		return "", fmt.Errorf("error: tool '%s' is not registered or implemented", toolName)
+	}
+
+	// Execute the specific tool
+	toolResult, err := tool.Execute(ctx, args)
+	if err != nil {
+		return "", fmt.Errorf("execution error in %s: %w", toolName, err)
+	}
+
+	return toolResult, nil
 }
