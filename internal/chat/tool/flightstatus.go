@@ -16,12 +16,12 @@ import (
 	"github.com/acai-travel/tech-challenge/internal/chat/models"
 )
 
-// FlightStatusTool provides actual date
+// FlightStatusTool retrieves flight status information using Amadeus API
 type FlightStatusTool struct {
 	Client *clients.FlightClient
 }
 
-// NewFlightStatusTool is a constructor for the date tool.
+// NewFlightStatusTool is a constructor for the flight status tool
 func NewFlightStatusTool() *FlightStatusTool {
 	return &FlightStatusTool{
 		clients.NewFlightClient(os.Getenv("FLIGHT_CLIENT_ID"), os.Getenv("FLIGHT_CLIENT_SECRET")),
@@ -56,9 +56,10 @@ func parseFlightDesignator(fullFlight string) (carrierCode string, flightNumber 
 
 // Been testing for this, but test amadeus api is really limited, so everytime I try to find a flight
 // it does not find nothing... Could move to production, but rates may apply
-
 // Usual test that worked for me is "QR1 flight status for tomorrow", that prompt usually has response from amadeus
 func (tool *FlightStatusTool) Execute(ctx context.Context, args map[string]any) (string, error) {
+
+	// Params check
 	flightNum, exist := args["flight_number"].(string)
 	if !exist || flightNum == "" {
 		return "", errors.New("missing or invalid 'flight_number' argument")
@@ -79,14 +80,14 @@ func (tool *FlightStatusTool) Execute(ctx context.Context, args map[string]any) 
 	}
 
 	flightStatusUrl := fmt.Sprintf("%s/v2/schedule/flights?carrierCode=%s&flightNumber=%s&scheduledDepartureDate=%s",
-		tool.Client.BaseUrl, carrierCode, flightNumber, dateStr)
+		tool.Client.BaseURL, carrierCode, flightNumber, dateStr)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", flightStatusUrl, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// set auth token
+	// Set auth token
 	req.Header.Set("Authorization", "Bearer "+tool.Client.AccessToken)
 
 	resp, err := tool.Client.HTTPClient.Do(req)
@@ -100,9 +101,13 @@ func (tool *FlightStatusTool) Execute(ctx context.Context, args map[string]any) 
 	}
 
 	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil { /* handle read error */
+	if err != nil {
+		return "", fmt.Errorf("failed to read response body: %w", err)
 	}
+
+	// Logging to check if amadeus actually returned content
 	log.Printf("Raw Amadeus Response Body: %s", string(bodyBytes))
+
 	decoder := json.NewDecoder(bytes.NewReader(bodyBytes))
 
 	var apiResponse models.FlightStatusResponse
@@ -110,7 +115,7 @@ func (tool *FlightStatusTool) Execute(ctx context.Context, args map[string]any) 
 		return "", fmt.Errorf("failed to decode flight status API response: %w", err)
 	}
 
-	// convert flight status to json
+	// Convert flight status to json
 	flightStatusBytes, err := json.Marshal(apiResponse)
 	if err != nil {
 		return "", fmt.Errorf("error converting response: %w", err)
@@ -121,7 +126,7 @@ func (tool *FlightStatusTool) Execute(ctx context.Context, args map[string]any) 
 }
 
 // GetFunctionSchema defines the tool's expected signature for openAI
-func (t *FlightStatusTool) GetFunctionSchema() map[string]any {
+func (tool *FlightStatusTool) GetFunctionSchema() map[string]any {
 	return map[string]any{
 		"type": "object",
 		"properties": map[string]any{
@@ -134,6 +139,6 @@ func (t *FlightStatusTool) GetFunctionSchema() map[string]any {
 				"description": "The planned departure date in YYYY-MM-DD format.",
 			},
 		},
-		"required": []string{"flight_number"},
+		"required": []string{"flight_number", "departure_date"},
 	}
 }

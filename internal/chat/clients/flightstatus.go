@@ -12,24 +12,25 @@ import (
 	"time"
 )
 
-// Client working with amadeus
+// FlightClient works with Amadeus API.
 type FlightClient struct {
 	ClientID     string
 	ClientSecret string
 	AccessToken  string
-	BaseUrl      string
-	TokenUrl     string
+	BaseURL      string
+	TokenURL     string
 	TokenExpiry  time.Time
 	HTTPClient   *http.Client
 }
 
+// NewFlightClient creates a new FlightClient instance.
 func NewFlightClient(id, secret string) *FlightClient {
 	return &FlightClient{
 		ClientID:     id,
 		ClientSecret: secret,
 		HTTPClient:   &http.Client{Timeout: 10 * time.Second},
-		BaseUrl:      "https://test.api.amadeus.com",
-		TokenUrl:     "v1/security/oauth2/token",
+		BaseURL:      "https://test.api.amadeus.com",
+		TokenURL:     "v1/security/oauth2/token",
 	}
 }
 
@@ -52,7 +53,7 @@ func (c *FlightClient) GetToken(ctx context.Context) error {
 
 	body := strings.NewReader(data.Encode())
 
-	fullURL := c.BaseUrl + "/" + c.TokenUrl
+	fullURL := c.BaseURL + "/" + c.TokenURL
 	req, err := http.NewRequestWithContext(ctx, "POST", fullURL, body)
 	if err != nil {
 		return fmt.Errorf("could not create token request: %w", err)

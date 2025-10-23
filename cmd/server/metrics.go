@@ -35,7 +35,7 @@ func initProvider() (*metric.MeterProvider, *trace.TracerProvider, otelmetric.In
 	//  Configure MeterProvider
 	meterProvider, err := newMeterProvider(res)
 	if err != nil {
-		return nil, nil, nil, nil, fmt.Errorf("failed to create meter provider: %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("failed to create tracer provider: %w", err)
 	}
 
 	otel.SetMeterProvider(meterProvider)

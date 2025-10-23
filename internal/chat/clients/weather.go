@@ -5,13 +5,14 @@ import (
 	"time"
 )
 
-// Client working with weather api
+// WeatherClient works with weatherapi
 type WeatherClient struct {
 	APIKey     string
 	BaseURL    string
 	HTTPClient *http.Client
 }
 
+// NewWeatherClient creates a new WeatherClient instance.
 func NewWeatherClient(apiKey string) *WeatherClient {
 	return &WeatherClient{
 		APIKey:     apiKey,

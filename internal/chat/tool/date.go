@@ -26,6 +26,6 @@ func (tool *DateTool) Execute(ctx context.Context, args map[string]any) (string,
 }
 
 // GetFunctionSchema defines the tool's expected signature for openAI
-func (t *DateTool) GetFunctionSchema() map[string]any {
+func (tool *DateTool) GetFunctionSchema() map[string]any {
 	return map[string]any{}
 }

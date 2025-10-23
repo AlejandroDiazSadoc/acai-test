@@ -21,7 +21,7 @@ func TestServer_AssistantTittle(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		if out == "Checking the Weather Today" {
+		if out != "Checking the Weather Today" {
 			t.Fatalf("Output title does not match expected value")
 		}
 

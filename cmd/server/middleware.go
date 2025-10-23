@@ -25,6 +25,7 @@ func (w *responseWriterWrapper) WriteHeader(code int) {
 	w.ResponseWriter.WriteHeader(code)
 }
 
+// MetricsMiddleware returns a mux middleware that records HTTP metrics
 func MetricsMiddleware(requestCounter metric.Int64Counter, requestDuration metric.Float64Histogram) mux.MiddlewareFunc {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -44,7 +45,7 @@ func MetricsMiddleware(requestCounter metric.Int64Counter, requestDuration metri
 
 			statusCode := wrappedWriter.statusCode
 
-			//Checking logic of middleware working
+			// Log request completion and metric export attempt
 			slog.Info("Request finished, attempting metric export.", "route", route, "status", statusCode)
 
 			commonAttributes := []attribute.KeyValue{

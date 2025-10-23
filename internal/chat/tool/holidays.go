@@ -12,10 +12,10 @@ import (
 	ics "github.com/arran4/golang-ical"
 )
 
-// HolidaysTool provides actual date
+// HolidaysTool provides holidays.
 type HolidaysTool struct{}
 
-// NewHolidaysTool is a constructor for the date tool.
+// NewHolidaysTool is a constructor for the holidays tool.
 func NewHolidaysTool() *HolidaysTool {
 	return &HolidaysTool{}
 }
@@ -67,13 +67,16 @@ func (tool *HolidaysTool) Execute(ctx context.Context, args map[string]any) (str
 	if v := os.Getenv("HOLIDAY_CALENDAR_LINK"); v != "" {
 		link = v
 	}
+
+	// Params check
 	params, err := parseArgs(args)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse tool call arguments: %w", err)
 	}
+
 	events, err := LoadCalendar(ctx, link)
 	if err != nil {
-		return "", fmt.Errorf("failed to load holiday events")
+		return "", fmt.Errorf("failed to load holiday events: %w", err)
 	}
 
 	var holidays []string
@@ -102,7 +105,7 @@ func (tool *HolidaysTool) Execute(ctx context.Context, args map[string]any) (str
 }
 
 // GetFunctionSchema defines the tool's expected signature for openAI
-func (t *HolidaysTool) GetFunctionSchema() map[string]any {
+func (tool *HolidaysTool) GetFunctionSchema() map[string]any {
 	return map[string]any{
 		"type": "object",
 		"properties": map[string]any{

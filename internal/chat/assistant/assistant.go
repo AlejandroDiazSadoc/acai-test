@@ -121,7 +121,7 @@ func (a *Assistant) Reply(ctx context.Context, conv *model.Conversation) (string
 
 				if err != nil {
 					slog.ErrorContext(ctx, "Tool execution failed", "tool", toolName, "error", err)
-					msgs = append(msgs, openai.ToolMessage("Tool"+toolName+" failed with error: "+err.Error(), call.ID))
+					msgs = append(msgs, openai.ToolMessage("Tool "+toolName+" failed with error: "+err.Error(), call.ID))
 				} else {
 					msgs = append(msgs, openai.ToolMessage(result, call.ID))
 				}

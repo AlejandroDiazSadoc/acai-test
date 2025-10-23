@@ -33,14 +33,19 @@ func (tool *WeatherTool) Description() string {
 }
 
 func (tool *WeatherTool) Execute(ctx context.Context, args map[string]any) (string, error) {
-
+	// Params check
 	location, exist := args["location"].(string)
 	if !exist || location == "" {
 		return "", fmt.Errorf("missing required argument 'location'")
 	}
 
-	weatherUrl := fmt.Sprintf("%s/forecast.json?key=%s&q=%s&days=%q",
-		tool.Client.BaseURL, tool.Client.APIKey, url.QueryEscape(location), 1)
+	days := 1
+	if d, ok := args["days"].(float64); ok && d > 0 {
+		days = int(d)
+	}
+
+	weatherUrl := fmt.Sprintf("%s/forecast.json?key=%s&q=%s&days=%d",
+		tool.Client.BaseURL, tool.Client.APIKey, url.QueryEscape(location), days)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", weatherUrl, nil)
 	if err != nil {
@@ -62,7 +67,7 @@ func (tool *WeatherTool) Execute(ctx context.Context, args map[string]any) (stri
 		return "", fmt.Errorf("failed to decode weather API response: %w", err)
 	}
 
-	// convert weather to json
+	// Convert weather to json
 	weatherBytes, err := json.Marshal(apiResponse)
 	if err != nil {
 		return "", fmt.Errorf("error converting response: %w", err)
@@ -73,13 +78,17 @@ func (tool *WeatherTool) Execute(ctx context.Context, args map[string]any) (stri
 }
 
 // GetFunctionSchema defines the tool's expected signature for openAI
-func (t *WeatherTool) GetFunctionSchema() map[string]any {
+func (tool *WeatherTool) GetFunctionSchema() map[string]any {
 	return map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"location": map[string]string{
 				"type":        "string",
 				"description": "The location to get the weather from.",
+			},
+			"days": map[string]string{
+				"type":        "integer",
+				"description": "Optional number of forecast days to retrieve. Defaults to 1.",
 			},
 		},
 		"required": []string{"location"},

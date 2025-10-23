@@ -20,6 +20,7 @@ import (
 )
 
 func main() {
+	// Initialize OpenTelemetry providers
 	meterProvider, traceProvider, reqCount, reqDuration, err := initProvider()
 	if err != nil {
 		slog.Error("failed to initialize OpenTelemetry provider", "error", err)
@@ -34,14 +35,16 @@ func main() {
 			slog.Error("Error shutting down trace provider", "error", err)
 		}
 	}()
+	// Connect to MongoDB
 	mongo := mongox.MustConnect()
 
+	// Create repository and assistant instances
 	repo := model.New(mongo)
 	assist := assistant.New(tool.SetupTools())
 
 	server := chat.NewServer(repo, assist)
 
-	// Configure handler
+	// Configure handler and middleware
 	handler := mux.NewRouter()
 	handler.Use(
 		otelmux.Middleware("Clippy-chat"),

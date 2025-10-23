@@ -111,20 +111,22 @@ func (s *Server) StartConversation(ctx context.Context, req *pb.StartConversatio
 	var titleErr error
 	var reply string
 
-	// asyng generates title
+	// Async generates title
+	// Title error is ignored so it won't cause method failure
 	group.Go(func() error {
 		title, titleErr = s.assist.Title(groupCtx, &titleConversation)
 
 		return nil
 	})
-	// asyng generates reply
+	// Async generates reply
 	group.Go(func() error {
 		var err error
 		reply, err = s.assist.Reply(groupCtx, conversation)
 		return err
 	})
 
-	// waits for the slowest one or for reply to fail
+	// Waits for reply or title generation to complete.
+	// Only errors from reply generation cause a failure here.
 	if err := group.Wait(); err != nil {
 		slog.ErrorContext(ctx, "Failed to generate assistant reply", "error", err)
 		return nil, err
